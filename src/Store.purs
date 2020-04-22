@@ -42,11 +42,7 @@ type Store state action
     }
 
 newtype UseStore state action hooks
-  = UseStore
-  ( UseEffect Unit
-      ( UseState (Store state action) hooks
-      )
-  )
+  = UseStore (UseEffect Unit (UseState (Store state action) hooks))
 
 derive instance newtypeUseStore :: Newtype (UseStore state action hooks) _
 
