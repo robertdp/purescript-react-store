@@ -12,7 +12,6 @@ import Effect.Aff (Aff, Error, attempt, error, forkAff, launchAff_, supervise)
 import Effect.Aff.AVar (put, take)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console as Console
-import Effect.Ref (modify, new, read)
 import Effect.Ref as Ref
 import React.Basic.Hooks (Hook, UseEffect, UseState)
 import React.Basic.Hooks as Hooks
@@ -67,12 +66,12 @@ useStore { init, update, launch } = do
         }
     Hooks.useEffect unit do
       -- Internal mutable state for fast reads that don't need to touch React state
-      stateRef <- new init
+      stateRef <- Ref.new init
       -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
       actionBus <- empty
       setStore
         _
-          { readState = read stateRef
+          { readState = Ref.read stateRef
           , dispatch =
             -- sends actions to the bus asynchronously
             \action -> launchAff_ do attempt do put action actionBus
@@ -81,7 +80,7 @@ useStore { init, update, launch } = do
       let
         setState f =
           liftEffect do
-            newState <- modify f stateRef
+            newState <- Ref.modify f stateRef
             setStore _ { state = newState }
       -- This is the main loop. It waits for an action to come in over the bus and then runs the `update` function from
       -- the spec in a forked fiber. State updates are applied to the local mutable state and pushed back to React for
@@ -94,10 +93,10 @@ useStore { init, update, launch } = do
         action <- take actionBus
         -- We log these errors because they are created by the `update` function
         (forkAff <<< logError <<< attempt) do
-          currentState <- liftEffect do read stateRef
+          currentState <- liftEffect do Ref.read stateRef
           let
             store' =
-              { readState: liftEffect do read stateRef
+              { readState: liftEffect do Ref.read stateRef
               , setState
               , state: currentState
               }
