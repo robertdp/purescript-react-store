@@ -100,7 +100,7 @@ useStore { init, update, launch } = do
               , setState
               , state: currentState
               }
-          launch $ update store' action
+          launch do update store' action
       pure do
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
         AVar.kill (error "Store action bus killed") actionBus
