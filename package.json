@@ -1,0 +1,18 @@
+{
+  "name": "purescript-react-basic-hooks-store",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "spago build && npm run docs",
+    "docs": "spago docs --format markdown"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "purescript": "^0.13.6",
+    "purescript-psa": "^0.7.3",
+    "purty": "^6.2.0",
+    "spago": "^0.15.2"
+  }
+}
