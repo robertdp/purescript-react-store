@@ -7,9 +7,9 @@ import Data.Either (Either)
 import Data.Newtype (class Newtype)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect (Effect)
-import Effect.AVar (empty, kill)
+import Effect.AVar (empty, kill) as AVar
 import Effect.Aff (Aff, Error, attempt, error, forkAff, launchAff_, supervise)
-import Effect.Aff.AVar (put, take)
+import Effect.Aff.AVar (put, take) as AVar
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console as Console
 import Effect.Ref as Ref
@@ -68,13 +68,13 @@ useStore { init, update, launch } = do
       -- Internal mutable state for fast reads that don't need to touch React state
       stateRef <- Ref.new init
       -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-      actionBus <- empty
+      actionBus <- AVar.empty
       setStore
         _
           { readState = Ref.read stateRef
           , dispatch =
             -- sends actions to the bus asynchronously
-            \action -> launchAff_ do attempt do put action actionBus
+            \action -> launchAff_ do attempt do AVar.put action actionBus
           , initialised = true
           }
       let
@@ -90,7 +90,7 @@ useStore { init, update, launch } = do
       -- - `supervise` will clean up forked child fibers when the main fiber is shutdown
       -- - `attempt` will prevent the shutdown from logging an error
       (launchAff_ <<< attempt <<< supervise <<< forever) do
-        action <- take actionBus
+        action <- AVar.take actionBus
         -- We log these errors because they are created by the `update` function
         (forkAff <<< logError <<< attempt) do
           currentState <- liftEffect do Ref.read stateRef
@@ -103,7 +103,7 @@ useStore { init, update, launch } = do
           launch $ update store' action
       pure do
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
-        kill (error "Store action bus killed") actionBus
+        AVar.kill (error "Store action bus killed") actionBus
     pure store
 
 logError :: forall m a. MonadEffect m => m (Either Error a) -> m Unit
