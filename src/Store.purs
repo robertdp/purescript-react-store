@@ -94,14 +94,14 @@ useStore { init, update, launch } = do
         action <- take actionBus
         -- We log these errors because they are created by the `update` function
         (forkAff <<< logError <<< attempt) do
-          currentState <- liftEffect $ read stateRef
+          currentState <- liftEffect do read stateRef
           let
             store' =
-              { readState: liftEffect $ read stateRef
+              { readState: liftEffect do read stateRef
               , setState
               , state: currentState
               }
-          launch do update store' action
+          launch $ update store' action
       pure do
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
         kill (error "Store action bus killed") actionBus
