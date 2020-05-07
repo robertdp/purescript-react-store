@@ -84,13 +84,14 @@ useStore ::
 useStore { props, init, update, launch } =
   React.coerceHook React.do
     { propsRef, stateRef, actionBus } <-
-      useUnsafe ado
-        propsRef <- Ref.new props
-        -- Internal mutable state for fast reads that don't need to touch React state
-        stateRef <- Ref.new init
-        -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-        actionBus <- AVar.empty
-        in { propsRef, stateRef, actionBus }
+      React.useLazy unit \_ ->
+        unsafePerformEffect ado
+          propsRef <- Ref.new props
+          -- Internal mutable state for fast reads that don't need to touch React state
+          stateRef <- Ref.new init
+          -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
+          actionBus <- AVar.empty
+          in { propsRef, stateRef, actionBus }
     React.useEffectAlways do
       Ref.write props propsRef
       mempty
@@ -148,9 +149,6 @@ useStore' ::
   Spec' state action m ->
   Hook (UseStore' state action) (Store state action)
 useStore' { init, update, launch } = useStore { props: unit, init, update, launch }
-
-useUnsafe :: forall a. Effect a -> Hook (UseLazy Unit a) a
-useUnsafe effect = React.useLazy unit \_ -> unsafePerformEffect effect
 
 logError :: forall m a. MonadEffect m => m (Either Error a) -> m Unit
 logError ma = void $ ma >>= ltraverse Console.errorShow
