@@ -36,6 +36,9 @@ type Spec props state action m
     , launch :: m Unit -> Aff Unit
     }
 
+type Spec' state action m
+  = Spec Unit state action m
+
 -- | A stores external interface, returned from `useStore`.
 type Store state action
   = { state :: state
@@ -60,6 +63,9 @@ newtype UseStore props state action hooks
   )
 
 derive instance newtypeUseStore :: Newtype (UseStore props state action hooks) _
+
+type UseStore' state action hooks
+  = UseStore Unit state action hooks
 
 useStore ::
   forall m props state action.
@@ -123,6 +129,13 @@ useStore { props, init, update, launch } =
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
         AVar.kill (error "Store action bus killed") actionBus
     pure store
+
+useStore' ::
+  forall m state action.
+  MonadEffect m =>
+  Spec' state action m ->
+  Hook (UseStore' state action) (Store state action)
+useStore' { init, update, launch } = useStore { props: unit, init, update, launch }
 
 useUnsafe :: forall a. Effect a -> Hook (UseLazy Unit a) a
 useUnsafe effect = React.useLazy unit \_ -> unsafePerformEffect effect
