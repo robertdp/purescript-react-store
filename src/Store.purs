@@ -67,11 +67,11 @@ useStore ::
   Eq props =>
   Spec props state action m ->
   Hook (UseStore props state action) (Store state action)
-useStore { props, init: initialState, update, launch } =
+useStore { props, init, update, launch } =
   React.coerceHook React.do
     propsRef <- useUnsafe do Ref.new props
     -- Internal mutable state for fast reads that don't need to touch React state
-    stateRef <- useUnsafe do Ref.new initialState
+    stateRef <- useUnsafe do Ref.new init
     -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
     actionBus <- useUnsafe do AVar.empty
     React.useEffect props do
@@ -79,7 +79,7 @@ useStore { props, init: initialState, update, launch } =
       mempty
     store /\ setStore <-
       React.useState
-        { state: initialState
+        { state: init
         , readState: Ref.read stateRef
         , dispatch:
             -- sends actions to the bus asynchronously
