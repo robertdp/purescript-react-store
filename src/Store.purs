@@ -92,8 +92,8 @@ useStore { props, init, update, launch } =
 
         setState f =
           liftEffect do
-            newState <- Ref.modify f stateRef
-            setStore _ { state = newState }
+            state' <- Ref.modify f stateRef
+            setStore _ { state = state' }
       -- This is the main loop. It waits for an action to come in over the bus and then runs the `update` function from
       -- the spec in a forked fiber. State updates are applied to the local mutable state and pushed back to React for
       -- rendering. This continues until the action bus is shut down, causing the main loop to terminate and all child
