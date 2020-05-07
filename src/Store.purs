@@ -1,4 +1,13 @@
-module React.Basic.Hooks.Store (Instance, Spec, Spec', Store, UseStore, UseStore', useStore, useStore') where
+module React.Basic.Hooks.Store
+  ( Instance
+  , Spec
+  , Spec'
+  , Store
+  , UseStore
+  , UseStore'
+  , useStore
+  , useStore'
+  ) where
 
 import Prelude
 import Control.Monad.Rec.Class (forever)
