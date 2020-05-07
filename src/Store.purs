@@ -1,11 +1,11 @@
 module React.Basic.Hooks.Store
   ( Instance
   , Spec
-  , Spec'
   , Store
   , UseStore
-  , UseStore'
   , useStore
+  , Spec'
+  , UseStore'
   , useStore'
   ) where
 
