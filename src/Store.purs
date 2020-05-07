@@ -47,7 +47,7 @@ newtype UseStore props state action hooks
   = UseStore
   ( UseEffect Unit
       ( UseState (Store state action)
-          ( UseEffect props
+          ( UseEffect Unit
               ( UseLazy Unit (AVar action)
                   ( UseLazy Unit (Ref state)
                       ( UseLazy Unit (Ref props)
@@ -64,7 +64,6 @@ derive instance newtypeUseStore :: Newtype (UseStore props state action hooks) _
 useStore ::
   forall m props state action.
   MonadEffect m =>
-  Eq props =>
   Spec props state action m ->
   Hook (UseStore props state action) (Store state action)
 useStore { props, init, update, launch } =
@@ -74,7 +73,7 @@ useStore { props, init, update, launch } =
     stateRef <- useUnsafe do Ref.new init
     -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
     actionBus <- useUnsafe do AVar.empty
-    React.useEffect props do
+    React.useEffectAlways do
       Ref.write props propsRef
       mempty
     store /\ setStore <-
