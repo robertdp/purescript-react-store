@@ -59,7 +59,7 @@ newtype UseStore props state action hooks
       )
   )
 
-derive instance newtypeUseStore2 :: Newtype (UseStore props state action hooks) _
+derive instance newtypeUseStore :: Newtype (UseStore props state action hooks) _
 
 useStore ::
   forall m props state action.
