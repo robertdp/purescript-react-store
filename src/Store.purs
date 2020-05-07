@@ -1,35 +1,38 @@
-module React.Basic.Hooks.Store where
+module React.Basic.React.Store (Instance, Spec, Store, UseStore, useStore) where
 
 import Prelude
 import Control.Monad.Rec.Class (forever)
 import Data.Bitraversable (ltraverse)
 import Data.Either (Either)
 import Data.Newtype (class Newtype)
-import Data.Tuple.Nested (type (/\), (/\))
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
+import Effect.AVar (AVar)
 import Effect.AVar (empty, kill) as AVar
 import Effect.Aff (Aff, Error, attempt, error, forkAff, launchAff_, supervise)
 import Effect.Aff.AVar (put, take) as AVar
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console as Console
+import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import React.Basic.Hooks (Hook, UseEffect, UseState)
-import React.Basic.Hooks as Hooks
+import Effect.Unsafe (unsafePerformEffect)
+import React.Basic.Hooks (Hook, UseEffect, UseLazy, UseState)
+import React.Basic.Hooks as React
 
 -- | A stores internal interface to itself, only accessible inside the `update` function.
-type Instance state m
-  = { setState :: (state -> state) -> m Unit
-    , state :: state
+type Instance props state m
+  = { props :: props
+    , readProps :: m props
     , readState :: m state
+    , setState :: (state -> state) -> m Unit
+    , state :: state
     }
 
-type Dispatch action
-  = action -> Effect Unit
-
 -- | The spec required to configure and run a store.
-type Spec state action m
-  = { init :: state
-    , update :: Instance state m -> action -> m Unit
+type Spec props state action m
+  = { props :: props
+    , init :: state
+    , update :: Instance props state m -> action -> m Unit
     , launch :: m Unit -> Aff Unit
     }
 
@@ -38,42 +41,56 @@ type Store state action
   = { state :: state
     , readState :: Effect state
     , dispatch :: action -> Effect Unit
-    , initialised :: Boolean
     }
 
-newtype UseStore state action hooks
-  = UseStore (UseEffect Unit (UseState (Store state action) hooks))
+newtype UseStore props state action hooks
+  = UseStore
+  ( UseEffect Unit
+      ( UseState (Store state action)
+          ( UseEffect props
+              ( UseLazy Unit (AVar action)
+                  ( UseLazy Unit (Ref state)
+                      ( UseLazy Unit (Ref props)
+                          hooks
+                      )
+                  )
+              )
+          )
+      )
+  )
 
-derive instance newtypeUseStore :: Newtype (UseStore state action hooks) _
+derive instance newtypeUseStore2 :: Newtype (UseStore props state action hooks) _
 
 useStore ::
-  forall state action m.
+  forall m props state action.
   MonadEffect m =>
-  Spec state action m ->
-  Hook (UseStore state action) (Store state action)
-useStore { init, update, launch } = do
-  Hooks.coerceHook Hooks.do
+  Eq props =>
+  Spec props state action m ->
+  Hook (UseStore props state action) (Store state action)
+useStore { props, init: initialState, update, launch } =
+  React.coerceHook React.do
+    propsRef <- useUnsafe do Ref.new props
+    -- Internal mutable state for fast reads that don't need to touch React state
+    stateRef <- useUnsafe do Ref.new initialState
+    -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
+    actionBus <- useUnsafe do AVar.empty
+    React.useEffect props do
+      Ref.write props propsRef
+      mempty
     store /\ setStore <-
-      Hooks.useState
-        { state: init
-        , readState: pure init
-        , dispatch: \_ -> Console.warn "Dispatch to uninitialised store"
-        , initialised: false
-        }
-    Hooks.useEffect unit do
-      -- Internal mutable state for fast reads that don't need to touch React state
-      stateRef <- Ref.new init
-      -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-      actionBus <- AVar.empty
-      setStore
-        _
-          { readState = Ref.read stateRef
-          , dispatch =
+      React.useState
+        { state: initialState
+        , readState: Ref.read stateRef
+        , dispatch:
             -- sends actions to the bus asynchronously
             \action -> launchAff_ do attempt do AVar.put action actionBus
-          , initialised = true
-          }
+        }
+    React.useEffectOnce do
       let
+        readProps = liftEffect do Ref.read propsRef
+
+        readState = liftEffect do Ref.read stateRef
+
         setState f =
           liftEffect do
             newState <- Ref.modify f stateRef
@@ -89,10 +106,13 @@ useStore { init, update, launch } = do
         action <- AVar.take actionBus
         -- We log these errors because they are created by the `update` function
         (forkAff <<< logError <<< attempt) do
+          currentProps <- liftEffect do Ref.read propsRef
           currentState <- liftEffect do Ref.read stateRef
           let
             store' =
-              { readState: liftEffect do Ref.read stateRef
+              { props: currentProps
+              , readProps
+              , readState
               , setState
               , state: currentState
               }
@@ -102,20 +122,8 @@ useStore { init, update, launch } = do
         AVar.kill (error "Store action bus killed") actionBus
     pure store
 
+useUnsafe :: forall a. Effect a -> Hook (UseLazy Unit a) a
+useUnsafe effect = React.useLazy unit \_ -> unsafePerformEffect effect
+
 logError :: forall m a. MonadEffect m => m (Either Error a) -> m Unit
 logError ma = void $ ma >>= ltraverse Console.errorShow
-
--- | A helper for `Hooks.useEffect` that waits for a `Store` to finish initialising before running effects.
-useEffect ::
-  forall state action key.
-  Eq key =>
-  Store state action ->
-  key ->
-  Effect (Effect Unit) ->
-  Hook (UseEffect (Boolean /\ key)) Unit
-useEffect store key eff = do
-  Hooks.useEffect (store.initialised /\ key) do
-    cleanup <- Ref.new mempty
-    when store.initialised do
-      eff >>= flip Ref.write cleanup
-    Ref.read cleanup
