@@ -60,12 +60,12 @@ newtype UseStore props state action hooks
   ( UseEffect Unit
       ( UseState (Store state action)
           ( UseEffect Unit
-              ( UseLazy Unit (AVar action)
-                  ( UseLazy Unit (Ref state)
-                      ( UseLazy Unit (Ref props)
-                          hooks
-                      )
-                  )
+              ( UseLazy Unit
+                  { actionBus :: AVar action
+                  , propsRef :: Ref props
+                  , stateRef :: Ref state
+                  }
+                  hooks
               )
           )
       )
@@ -83,11 +83,14 @@ useStore ::
   Hook (UseStore props state action) (Store state action)
 useStore { props, init, update, launch } =
   React.coerceHook React.do
-    propsRef <- useUnsafe do Ref.new props
-    -- Internal mutable state for fast reads that don't need to touch React state
-    stateRef <- useUnsafe do Ref.new init
-    -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-    actionBus <- useUnsafe do AVar.empty
+    { propsRef, stateRef, actionBus } <-
+      useUnsafe ado
+        propsRef <- Ref.new props
+        -- Internal mutable state for fast reads that don't need to touch React state
+        stateRef <- Ref.new init
+        -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
+        actionBus <- AVar.empty
+        in { propsRef, stateRef, actionBus }
     React.useEffectAlways do
       Ref.write props propsRef
       mempty
