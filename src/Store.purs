@@ -86,10 +86,13 @@ useStore { props, init, update, launch } =
         }
     React.useEffectOnce do
       let
+        readProps :: forall n. MonadEffect n => n props
         readProps = liftEffect do Ref.read propsRef
 
+        readState :: forall n. MonadEffect n => n state
         readState = liftEffect do Ref.read stateRef
 
+        setState :: (state -> state) -> m Unit
         setState f =
           liftEffect do
             state' <- Ref.modify f stateRef
@@ -105,8 +108,8 @@ useStore { props, init, update, launch } =
         action <- AVar.take actionBus
         -- We log these errors because they are created by the `update` function
         (forkAff <<< logError <<< attempt) do
-          currentProps <- liftEffect do Ref.read propsRef
-          currentState <- liftEffect do Ref.read stateRef
+          currentProps <- readProps
+          currentState <- readState
           let
             store' =
               { props: currentProps
