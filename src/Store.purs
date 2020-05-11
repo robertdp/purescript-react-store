@@ -22,8 +22,10 @@ import Effect.Aff (Aff, Error, attempt, error, forkAff, launchAff_, supervise)
 import Effect.Aff.AVar (put, take) as AVar
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console as Console
+import Effect.Ref (Ref)
+import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import React.Basic.Hooks (Hook, UseEffect, UseLazy, UseRef, UseState)
+import React.Basic.Hooks (Hook, UseEffect, UseLazy, UseState)
 import React.Basic.Hooks as React
 
 -- | A stores internal interface to itself, only accessible inside the `update` function.
@@ -58,12 +60,12 @@ newtype UseStore props state action hooks
   ( UseEffect Unit
       ( UseState (Store state action)
           ( UseEffect Unit
-              ( UseLazy Unit (AVar action)
-                  ( UseRef state
-                      ( UseRef props
-                          hooks
-                      )
-                  )
+              ( UseLazy Unit
+                  { actionBus :: AVar action
+                  , propsRef :: Ref props
+                  , stateRef :: Ref state
+                  }
+                  hooks
               )
           )
       )
@@ -81,18 +83,23 @@ useStore ::
   Hook (UseStore props state action) (Store state action)
 useStore { props, init, update, launch } =
   React.coerceHook React.do
-    propsRef <- React.useRef props
-    -- Internal mutable state for fast reads that don't need to touch React state
-    stateRef <- React.useRef init
-    -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-    actionBus <- React.useLazy unit \_ -> unsafePerformEffect AVar.empty
+    { actionBus, propsRef, stateRef } <-
+      React.useLazy unit \_ ->
+        unsafePerformEffect ado
+          -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
+          actionBus <- AVar.empty
+          -- A mutable version of props that gets constantly updated for access inside `update`
+          propsRef <- Ref.new props
+          -- Internal mutable state for fast reads that don't need to touch React state
+          stateRef <- Ref.new init
+          in { actionBus, propsRef, stateRef }
     React.useEffectAlways do
-      React.writeRef propsRef props
+      Ref.write props propsRef
       mempty
     store /\ modifyStore <-
       React.useState
         { state: init
-        , readState: React.readRef stateRef
+        , readState: Ref.read stateRef
         , dispatch:
             -- sends actions to the bus asynchronously
             \action -> launchAff_ do attempt do AVar.put action actionBus
@@ -100,16 +107,15 @@ useStore { props, init, update, launch } =
     React.useEffectOnce do
       let
         readProps :: forall n. MonadEffect n => n props
-        readProps = liftEffect do React.readRef propsRef
+        readProps = liftEffect do Ref.read propsRef
 
         readState :: forall n. MonadEffect n => n state
-        readState = liftEffect do React.readRef stateRef
+        readState = liftEffect do Ref.read stateRef
 
         setState :: (state -> state) -> m Unit
         setState f =
           liftEffect do
-            state' <- f <$> React.readRef stateRef
-            React.writeRef stateRef state'
+            state' <- Ref.modify f stateRef
             modifyStore _ { state = state' }
       -- This is the main loop. It waits for an action to come in over the bus and then runs the `update` function from
       -- the spec in a forked fiber. State updates are applied to the local mutable state and pushed back to React for
