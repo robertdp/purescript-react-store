@@ -4,6 +4,7 @@ module React.Basic.Hooks.Store
   , Store
   , UseStore
   , useStore
+  , Instance'
   , Spec'
   , UseStore'
   , useStore'
@@ -37,6 +38,9 @@ type Instance props state m
     , state :: state
     }
 
+type Instance' state m
+  = Instance Unit state m
+
 -- | The spec required to configure and run a store.
 type Spec props state action m
   = { props :: props
@@ -46,7 +50,10 @@ type Spec props state action m
     }
 
 type Spec' state action m
-  = Spec Unit state action m
+  = { init :: state
+    , update :: Instance' state m -> action -> m Unit
+    , launch :: m Unit -> Aff Unit
+    }
 
 -- | A stores external interface, returned from `useStore`.
 type Store state action
