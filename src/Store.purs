@@ -18,9 +18,10 @@ import Data.Newtype (class Newtype)
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.AVar (AVar)
-import Effect.AVar (empty, kill) as AVar
-import Effect.Aff (Aff, Error, attempt, error, forkAff, launchAff_, supervise)
-import Effect.Aff.AVar (put, take) as AVar
+import Effect.AVar as AVar
+import Effect.Aff (Aff, Error)
+import Effect.Aff as Aff
+import Effect.Aff.AVar as AffVar
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console as Console
 import Effect.Ref (Ref)
@@ -68,7 +69,7 @@ newtype UseStore props state action hooks
       ( UseState (Store state action)
           ( UseEffect Unit
               ( UseLazy Unit
-                  { actionBus :: AVar action
+                  { actionQueue :: AVar action
                   , propsRef :: Ref props
                   , stateRef :: Ref state
                   }
@@ -90,16 +91,16 @@ useStore ::
   Hook (UseStore props state action) (Store state action)
 useStore { props, init, update, launch } =
   React.coerceHook React.do
-    { actionBus, propsRef, stateRef } <-
+    { actionQueue, propsRef, stateRef } <-
       React.useLazy unit \_ ->
         unsafePerformEffect ado
           -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
-          actionBus <- AVar.empty
+          actionQueue <- AVar.empty
           -- A mutable version of props that gets constantly updated for access inside `update`
           propsRef <- Ref.new props
           -- Internal mutable state for fast reads that don't need to touch React state
           stateRef <- Ref.new init
-          in { actionBus, propsRef, stateRef }
+          in { actionQueue, propsRef, stateRef }
     React.useEffectAlways do
       Ref.write props propsRef
       mempty
@@ -109,7 +110,7 @@ useStore { props, init, update, launch } =
         , readState: Ref.read stateRef
         , dispatch:
             -- sends actions to the bus asynchronously
-            \action -> launchAff_ do attempt do AVar.put action actionBus
+            \action -> Aff.launchAff_ do Aff.attempt do AffVar.put action actionQueue
         }
     React.useEffectOnce do
       let
@@ -131,24 +132,28 @@ useStore { props, init, update, launch } =
       -- - `forever` will cause it to loop indefinitely
       -- - `supervise` will clean up forked child fibers when the main fiber is shutdown
       -- - `attempt` will prevent the shutdown from logging an error
-      (launchAff_ <<< attempt <<< supervise <<< forever) do
-        action <- AVar.take actionBus
-        -- We log these errors because they are created by the `update` function
-        (forkAff <<< logError <<< attempt) do
-          currentProps <- readProps
-          currentState <- readState
-          let
-            store' =
-              { props: currentProps
-              , readProps
-              , readState
-              , setState
-              , state: currentState
-              }
-          launch do update store' action
+      fiber <-
+        (Aff.launchAff <<< Aff.attempt <<< Aff.supervise <<< forever) do
+          action <- AffVar.take actionQueue
+          -- We log these errors because they are created by the `update` function
+          (Aff.forkAff <<< logError <<< Aff.attempt) do
+            currentProps <- readProps
+            currentState <- readState
+            let
+              store' =
+                { props: currentProps
+                , readProps
+                , readState
+                , setState
+                , state: currentState
+                }
+            launch do update store' action
       pure do
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
-        AVar.kill (error "Store action bus killed") actionBus
+        let
+          error = Aff.error "Unmounting"
+        AVar.kill error actionQueue
+        Aff.launchAff_ do Aff.killFiber error fiber
     pure store
 
 useStore' ::
