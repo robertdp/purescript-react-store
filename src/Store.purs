@@ -133,7 +133,7 @@ useStore { props, init, update, launch } =
       -- - `supervise` will clean up forked child fibers when the main fiber is shutdown
       -- - `attempt` will prevent the shutdown from logging an error
       fiber <-
-        (Aff.launchAff <<< Aff.attempt <<< Aff.supervise <<< Rec.forever) do
+        (Aff.launchAff <<< Aff.attempt <<< Aff.supervise <<< forever) do
           action <- AffVar.take actionQueue
           -- We log these errors because they are created by the `update` function
           (Aff.forkAff <<< logError <<< Aff.attempt) do
