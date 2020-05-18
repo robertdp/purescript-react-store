@@ -133,7 +133,7 @@ useStore { props, init, update, launch } =
       -- - `supervise` will clean up forked child fibers when the main fiber is shutdown
       -- - `attempt` will prevent the shutdown from logging an error
       fiber <-
-        (Aff.launchAff <<< Aff.attempt <<< Aff.supervise <<< forever) do
+        (Aff.launchAff <<< Aff.attempt <<< Aff.supervise <<< Rec.forever) do
           action <- AffVar.take actionQueue
           -- We log these errors because they are created by the `update` function
           (Aff.forkAff <<< logError <<< Aff.attempt) do
@@ -151,9 +151,9 @@ useStore { props, init, update, launch } =
       pure do
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
         let
-          error = Aff.error "Unmounting"
-        AVar.kill error actionQueue
-        Aff.launchAff_ do Aff.killFiber error fiber
+          message = Aff.error "Unmounting"
+        AVar.kill message actionQueue
+        Aff.launchAff_ do Aff.killFiber message fiber
     pure store
 
 useStore' ::
