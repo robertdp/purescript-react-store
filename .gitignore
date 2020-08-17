@@ -3,6 +3,9 @@
 /.pulp-cache/
 /output/
 /generated-docs/*
+!/generated-docs/md
+/generated-docs/md/*
+!/generated-docs/md/React.Basic.Hooks.Store.*
 /.psc-package/
 /.psc*
 /.purs*
