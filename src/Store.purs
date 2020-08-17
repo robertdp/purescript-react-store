@@ -27,7 +27,7 @@ import Effect.Class.Console as Console
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import React.Basic.Hooks (Hook, UseEffect, UseLazy, UseState)
+import React.Basic.Hooks (Hook, UseEffect, UseMemo, UseState)
 import React.Basic.Hooks as React
 
 -- | A stores internal interface to itself, only accessible inside the `update` function.
@@ -68,7 +68,7 @@ newtype UseStore props state action hooks
   ( UseEffect Unit
       ( UseState (Store state action)
           ( UseEffect Unit
-              ( UseLazy Unit
+              ( UseMemo Unit
                   { actionQueue :: AVar action
                   , propsRef :: Ref props
                   , stateRef :: Ref state
@@ -92,7 +92,7 @@ useStore ::
 useStore { props, init, update, launch } =
   React.coerceHook React.do
     { actionQueue, propsRef, stateRef } <-
-      React.useLazy unit \_ ->
+      React.useMemo unit \_ ->
         unsafePerformEffect ado
           -- A variable so the main store loop can subscribe to asynchronous actions sent from the component
           actionQueue <- AVar.empty
@@ -152,8 +152,8 @@ useStore { props, init, update, launch } =
         -- When the component unmounts, trigger the main loop shutdown by killing the action bus.
         let
           message = Aff.error "Unmounting"
-        AVar.kill message actionQueue
         Aff.launchAff_ do Aff.killFiber message fiber
+        AVar.kill message actionQueue
     pure store
 
 useStore' ::
