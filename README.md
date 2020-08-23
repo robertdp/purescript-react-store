@@ -2,10 +2,18 @@
 
 This library provides `useStore`, a React hook which uses a simple and convenient approach to state management for components. The `react-basic-hooks` library is required, and some familiarity is assumed.
 
+```purs
+useStore ::
+  forall m props state action.
+  MonadEffect m =>
+  Spec props state action m ->
+  Hook (UseStore props state action) (Store state action)
+```
+
 ## Interesting points:
 
-- each store maintains a single dedicated asynchronous fiber
-- dispatched actions are handled using a queue
+- each store maintains a single dedicated fiber
+- dispatched actions are handled using an asynchronous queue
 - each action is run in its own fork
 - the fiber and queue are cleaned up when the component unmounts
 - the state is managed internally for consistency, and pushed to React when changed
@@ -14,7 +22,7 @@ This library provides `useStore`, a React hook which uses a simple and convenien
 
 - actions can be handled in parallel
 - long-running asynchronous and parallel computations are supported, along with state updates
-- full automatic shutdown of all asynchronous logic when unmounting
+- automatic shutdown of all pending logic and state updates when unmounting
 
 ### Note
 
