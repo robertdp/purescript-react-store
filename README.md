@@ -18,7 +18,7 @@ useStore ::
 - the fiber and queue are cleaned up when the component unmounts
 - the state is managed internally for consistency, and pushed to React when changed
 
-## What does this mean?
+### What does this mean?
 
 - actions can be handled in parallel
 - long-running asynchronous and parallel computations are supported, along with state updates
