@@ -87,17 +87,6 @@ data Action
   | Increment
   | Reset
 
-update ::
-  forall m.
-  MonadEffect m =>
-  Store.Instance CounterProps Int m ->
-  Action ->
-  m Unit
-update self = case _ of
-  Decrement -> self.setState (_ - self.props.step)
-  Increment -> self.setState (_ + self.props.step)
-  Reset -> self.setState (const self.props.start)
-
 mkCounter :: Component CounterProps
 mkCounter =
   React.component "Counter" \props -> React.do
@@ -108,22 +97,29 @@ mkCounter =
         , update
         , launch: liftEffect
         }
-    pure
-      $ React.fragment
-          [ R.button
-              { onClick: handler_ do store.dispatch Decrement
-              , children: [ R.text "-" ]
-              }
-          , R.text (show store.state.count)
-          , R.button
-              { onClick: handler_ do store.dispatch Increment
-              , children: [ R.text "+" ]
-              }
-          , R.button
-              { onClick: handler_ do store.dispatch Reset
-              , children: [ R.text "Reset" ]
-              }
-          ]
+    pure $ render props store
+  where
+  update self action = case action of
+    Decrement -> self.setState (_ - self.props.step)
+    Increment -> self.setState (_ + self.props.step)
+    Reset -> self.setState (const self.props.start)
+
+  render props store =
+    React.fragment
+      [ R.button
+          { onClick: handler_ do store.dispatch Decrement
+          , children: [ R.text "-" ]
+          }
+      , R.text (show store.state.count)
+      , R.button
+          { onClick: handler_ do store.dispatch Increment
+          , children: [ R.text "+" ]
+          }
+      , R.button
+          { onClick: handler_ do store.dispatch Reset
+          , children: [ R.text "Reset" ]
+          }
+      ]
 ```
 
 When using `useStore` we need to give it a spec containing 4 things:
