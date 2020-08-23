@@ -1,4 +1,4 @@
-module React.Basic.Hooks.Store
+module React.Store
   ( Instance
   , Spec
   , Store
@@ -30,7 +30,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import React.Basic.Hooks (Hook, UseEffect, UseMemo, UseState)
 import React.Basic.Hooks as React
 
--- | A stores internal interface to itself, only accessible inside the `update` function.
+-- | A stores internal interface, only accessible inside the `update` function.
 type Instance props state m
   = { props :: props
     , readProps :: m props
