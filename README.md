@@ -1,5 +1,7 @@
 # purescript-react-store
 
+Asynchronous state management made easy(er).
+
 This library provides `useStore`, a React hook which uses a simple and convenient approach to state management for components. The `react-basic-hooks` library is required, and some familiarity is assumed.
 
 ```purs
