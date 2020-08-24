@@ -9,7 +9,7 @@ useStore ::
   forall m props state action.
   MonadEffect m =>
   Spec props state action m ->
-  Hook (UseStore props state action) (Store state action)
+  Hook (UseStore props state action m) (Store state action)
 ```
 
 ## Interesting points:
