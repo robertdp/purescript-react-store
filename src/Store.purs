@@ -33,10 +33,10 @@ import React.Basic.Hooks as React
 -- | A stores internal interface, only accessible inside the `update` function.
 type Instance props state m
   = { props :: props
+    , state :: state
+    , setState :: (state -> state) -> m Unit
     , readProps :: m props
     , readState :: m state
-    , setState :: (state -> state) -> m Unit
-    , state :: state
     }
 
 type Instance' state m
@@ -59,8 +59,8 @@ type Spec' state action m
 -- | A stores external interface, returned from `useStore`.
 type Store state action
   = { state :: state
-    , readState :: Effect state
     , dispatch :: action -> Effect Unit
+    , readState :: Effect state
     }
 
 newtype UseStore props state action m hooks
