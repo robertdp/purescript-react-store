@@ -28,4 +28,4 @@ useStore ::
     }
 ```
 
-If you're not sure you need this library, try the hooks exposed by `react-basic-hooks` first. Just using `useEffect` and `useReducer` can get you a long way, and that library also includes `useAffReducer` for an Elm-ish approach.
+`useStore` is most useful for larger and more complex components, like page-level components. If you're not sure you need this library, try the hooks exposed by `react-basic-hooks` first. Just using `useEffect` and `useReducer` can get you a long way, and that library also includes `useAffReducer` for an Elm-ish approach.
