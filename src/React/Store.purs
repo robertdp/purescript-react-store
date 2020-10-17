@@ -66,7 +66,7 @@ component name { init, eval, render } =
       props' <- Ref.read propsRef
       unless (unsafeRefEq props props') do
         Ref.write props propsRef
-        Aff.launchAff_ $ AffVar.put (Update props') eventQueue
+        Aff.launchAff_ $ AffVar.put (Props props') eventQueue
       mempty
     React.useEffectOnce do
       let

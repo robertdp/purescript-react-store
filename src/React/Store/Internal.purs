@@ -2,7 +2,7 @@ module React.Store.Internal where
 
 import Prelude
 import Control.Applicative.Free (FreeAp, hoistFreeAp, retractFreeAp)
-import Control.Monad.Free (Free, liftF, runFreeM)
+import Control.Monad.Free (Free, hoistFree, liftF, runFreeM)
 import Control.Monad.Resource (ReleaseKey, Resource)
 import Control.Monad.Resource as Resource
 import Control.Monad.State (class MonadState)
@@ -21,7 +21,7 @@ import Effect.Ref as Ref
 import Unsafe.Reference (unsafeRefEq)
 
 newtype EventSource a m
-  = EventSource ((a -> m Unit) -> m (m Unit))
+  = EventSource ((a -> Effect Unit) -> m (m Unit))
 
 data ComponentF state action m a
   = State (state -> Tuple a state)
@@ -42,6 +42,18 @@ instance functorComponentF :: Functor m => Functor (ComponentF state action m) w
 
 newtype ComponentM state action m a
   = ComponentM (Free (ComponentF state action m) a)
+
+hoist :: forall state action m m'. Functor m => (m ~> m') -> ComponentM state action m ~> ComponentM state action m'
+hoist nat (ComponentM component) = ComponentM (hoistFree go component)
+  where
+  go :: ComponentF state action m ~> ComponentF state action m'
+  go = case _ of
+    State f -> State f
+    Subscribe fes k -> Subscribe (\key -> case fes key of EventSource subscribe -> EventSource (nat <<< map nat <<< subscribe)) k
+    Release key a -> Release key a
+    Lift m -> Lift (nat m)
+    Par p -> Par (case p of ComponentAp f -> ComponentAp (hoistFreeAp (hoist nat) f))
+    Fork fork k -> Fork (hoist nat fork) k
 
 derive newtype instance functorComponentM :: Functor (ComponentM state action m)
 
@@ -104,7 +116,7 @@ evalComponent interface@{ stateRef, render, enqueueAction } (ComponentM componen
     Subscribe prepare next -> do
       canceler <- liftEffect $ Ref.new Nothing
       key <- Resource.register $ liftEffect (Ref.read canceler) >>= sequence_
-      runCanceler <- case prepare key of EventSource subscribe -> lift $ subscribe (liftEffect <<< enqueueAction)
+      runCanceler <- case prepare key of EventSource subscribe -> lift $ subscribe enqueueAction
       liftEffect $ Ref.write (Just runCanceler) canceler
       pure (next key)
     Release key next -> do
