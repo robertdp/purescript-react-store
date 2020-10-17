@@ -123,6 +123,17 @@ let upstream =
 
 let overrides = {=}
 
-let additions = {=}
+let additions =
+  { resourcet =
+    { dependencies =
+      [ "aff"
+      , "ordered-collections"
+      , "refs"
+      , "transformers"
+      ]
+    , repo = "https://github.com/robertdp/purescript-resourcet.git"
+    , version = "master"
+    }
+  }
 
 in  upstream // overrides // additions
