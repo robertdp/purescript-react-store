@@ -77,9 +77,12 @@ component name { init, eval, render } =
             }
             (eval event)
       blockUntilUnmount <- AVar.empty
-      (Aff.launchAff_ <<< Resource.runResource) do
+      (Aff.launchAff_ <<< Aff.supervise <<< Resource.runResource) do
         runStore (Initialize props)
-        fiber <- Resource.fork $ forever $ runStore =<< lift (AffVar.take eventQueue)
+        fiber <-
+          (Resource.fork <<< forever) do
+            event <- lift $ AffVar.take eventQueue
+            Resource.fork $ runStore event
         lift do
           AffVar.take blockUntilUnmount
           Aff.killFiber (Aff.error "Finalizing") fiber
