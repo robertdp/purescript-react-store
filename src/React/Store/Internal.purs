@@ -115,7 +115,7 @@ interpret stateRef enqueueAction (ComponentM store) =
         Lift aff -> do
           lift aff
         Par (ComponentAp p) -> do
-          fromReaderT $ sequential $ retractFreeAp $ hoistFreeAp (parallel <<< toReaderT <<< interpret stateRef enqueueAction) p
+          sequential $ retractFreeAp $ hoistFreeAp (parallel <<< interpret stateRef enqueueAction) p
         Fork run next -> do
           fiber <- Resource.fork $ interpret stateRef enqueueAction run
           key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
@@ -125,9 +125,3 @@ interpret stateRef enqueueAction (ComponentM store) =
           pure next
     )
     store
-  where
-  toReaderT :: forall m. ResourceT m ~> ReaderT Registry m
-  toReaderT (ResourceT run) = ReaderT run
-
-  fromReaderT :: forall m. ReaderT Registry m ~> ResourceT m
-  fromReaderT (ReaderT run) = ResourceT run
