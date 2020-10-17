@@ -81,37 +81,35 @@ data Lifecycle props action
   | Action action
   | Finalize
 
-interpret :: forall state action a. Ref state -> (action -> Effect Unit) -> ComponentM state action Aff a -> Resource a
-interpret stateRef enqueueAction (ComponentM store) =
-  runFreeM
-    ( case _ of
-        State f -> do
-          liftEffect do
-            state <- Ref.read stateRef
-            case f state of
-              Tuple next state' -> do
-                Ref.write state' stateRef
-                pure next
-        Subscribe prepare next -> do
-          canceler <- liftEffect $ Ref.new Nothing
-          key <- Resource.register $ liftEffect $ Ref.read canceler >>= sequence_
-          liftEffect do
-            runCanceler <- case prepare key of EventSource subscribe -> subscribe enqueueAction
-            Ref.write (Just runCanceler) canceler
-          pure (next key)
-        Unsubscribe key next -> do
-          Resource.release key
-          pure next
-        Lift aff -> do
-          lift aff
-        Par (ComponentAp p) -> do
-          sequential $ retractFreeAp $ hoistFreeAp (parallel <<< interpret stateRef enqueueAction) p
-        Fork run next -> do
-          fiber <- Resource.fork $ interpret stateRef enqueueAction run
-          key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
-          pure (next key)
-        Kill key next -> do
-          Resource.release key
-          pure next
-    )
-    store
+evalComponent :: forall state action a. Ref state -> (action -> Effect Unit) -> ComponentM state action Aff a -> Resource a
+evalComponent stateRef enqueueAction (ComponentM store) = runFreeM interpret store
+  where
+  interpret = case _ of
+    State f -> do
+      liftEffect do
+        state <- Ref.read stateRef
+        case f state of
+          Tuple next state' -> do
+            Ref.write state' stateRef
+            pure next
+    Subscribe prepare next -> do
+      canceler <- liftEffect $ Ref.new Nothing
+      key <- Resource.register $ liftEffect $ Ref.read canceler >>= sequence_
+      liftEffect do
+        runCanceler <- case prepare key of EventSource subscribe -> subscribe enqueueAction
+        Ref.write (Just runCanceler) canceler
+      pure (next key)
+    Unsubscribe key next -> do
+      Resource.release key
+      pure next
+    Lift aff -> do
+      lift aff
+    Par (ComponentAp p) -> do
+      sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent stateRef enqueueAction) p
+    Fork runFork next -> do
+      fiber <- Resource.fork $ evalComponent stateRef enqueueAction runFork
+      key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
+      pure (next key)
+    Kill key next -> do
+      Resource.release key
+      pure next

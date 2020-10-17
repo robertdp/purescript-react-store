@@ -16,7 +16,7 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import React.Basic.Hooks (JSX)
 import React.Basic.Hooks as React
-import React.Store.Internal (ComponentM, Lifecycle(..), interpret)
+import React.Store.Internal (ComponentM, Lifecycle(..), evalComponent)
 import Unsafe.Reference (unsafeRefEq)
 
 type Component props state action
@@ -59,7 +59,7 @@ component name { init, eval, render } =
       let
         runStore event = do
           state <- liftEffect $ Ref.read stateRef
-          interpret stateRef store.dispatch (eval event)
+          evalComponent stateRef store.dispatch (eval event)
           state' <- liftEffect $ Ref.read stateRef
           unless (unsafeRefEq state state') do
             liftEffect $ modifyStore _ { state = state' }
