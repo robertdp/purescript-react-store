@@ -11,7 +11,6 @@ import Effect (Effect)
 import Effect.AVar as AVar
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
-import Effect.Aff.AVar as AffAVar
 import Effect.Aff.AVar as AffVar
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -82,12 +81,12 @@ component name { init, eval, render } =
         runStore (Initialize props)
         fiber <- Resource.fork $ forever $ runStore =<< lift (AffVar.take eventQueue)
         lift do
-          AffAVar.take blockUntilUnmount
+          AffVar.take blockUntilUnmount
           Aff.killFiber (Aff.error "Finalizing") fiber
-          AffAVar.kill (Aff.error "Finalizing") blockUntilUnmount
+          AffVar.kill (Aff.error "Finalizing") blockUntilUnmount
         runStore Finalize
       pure do
         Aff.launchAff_ do
-          AffAVar.kill (Aff.error "Finalizing") eventQueue
+          AffVar.kill (Aff.error "Finalizing") eventQueue
           AffVar.put unit blockUntilUnmount
     pure (render { props, state: store.state, dispatch: store.dispatch })
