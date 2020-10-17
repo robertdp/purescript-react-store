@@ -1,7 +1,9 @@
 module React.Store where
 
 import Prelude
+import Control.Monad.Free (liftF)
 import Control.Monad.Rec.Class (forever)
+import Control.Monad.Resource (ReleaseKey)
 import Control.Monad.Resource as Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Tuple.Nested ((/\))
@@ -16,8 +18,20 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import React.Basic.Hooks (JSX)
 import React.Basic.Hooks as React
-import React.Store.Internal (ComponentM, Lifecycle(..), evalComponent)
+import React.Store.Internal (ComponentF(..), ComponentM(..), EventSource, Lifecycle(..), evalComponent)
 import Unsafe.Reference (unsafeRefEq)
+
+subscribe' :: forall state action m. (ReleaseKey -> EventSource action m) -> ComponentM state action m ReleaseKey
+subscribe' fes = ComponentM $ liftF $ Subscribe fes identity
+
+subscribe :: forall m action state. EventSource action m -> ComponentM state action m ReleaseKey
+subscribe = subscribe' <<< const
+
+release :: forall m action state. ReleaseKey -> ComponentM state action m Unit
+release key = ComponentM $ liftF $ Release key unit
+
+fork :: forall m action state. ComponentM state action m Unit -> ComponentM state action m ReleaseKey
+fork run = ComponentM $ liftF $ Fork run identity
 
 type Component props state action
   = { init :: state

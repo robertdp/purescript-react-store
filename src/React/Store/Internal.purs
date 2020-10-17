@@ -19,18 +19,18 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 
-newtype EventSource a
-  = EventSource ((a -> Effect Unit) -> Effect (Effect Unit))
+newtype EventSource a m
+  = EventSource ((a -> m Unit) -> m (m Unit))
 
-data StoreF state action m a
+data ComponentF state action m a
   = State (state -> Tuple a state)
-  | Subscribe (ReleaseKey -> EventSource action) (ReleaseKey -> a)
+  | Subscribe (ReleaseKey -> EventSource action m) (ReleaseKey -> a)
   | Release ReleaseKey a
   | Lift (m a)
   | Par (ComponentAp state action m a)
   | Fork (ComponentM state action m Unit) (ReleaseKey -> a)
 
-instance functorStoreF :: Functor m => Functor (StoreF state action m) where
+instance functorComponentF :: Functor m => Functor (ComponentF state action m) where
   map f = case _ of
     State k -> State (lmap f <<< k)
     Subscribe fes k -> Subscribe fes (map f k)
@@ -40,7 +40,7 @@ instance functorStoreF :: Functor m => Functor (StoreF state action m) where
     Fork m k -> Fork m (map f k)
 
 newtype ComponentM state action m a
-  = ComponentM (Free (StoreF state action m) a)
+  = ComponentM (Free (ComponentF state action m) a)
 
 derive newtype instance functorComponentM :: Functor (ComponentM state action m)
 
@@ -80,8 +80,9 @@ data Lifecycle props action
   | Finalize
 
 evalComponent :: forall state action a. Ref state -> (action -> Effect Unit) -> ComponentM state action Aff a -> Resource a
-evalComponent stateRef enqueueAction (ComponentM store) = runFreeM interpret store
+evalComponent stateRef enqueueAction (ComponentM component) = runFreeM interpret component
   where
+  interpret :: ComponentF state action Aff (Free (ComponentF state action Aff) a) -> Resource (Free (ComponentF state action Aff) a)
   interpret = case _ of
     State f -> do
       liftEffect do
@@ -92,16 +93,15 @@ evalComponent stateRef enqueueAction (ComponentM store) = runFreeM interpret sto
             pure next
     Subscribe prepare next -> do
       canceler <- liftEffect $ Ref.new Nothing
-      key <- Resource.register $ liftEffect $ Ref.read canceler >>= sequence_
-      liftEffect do
-        runCanceler <- case prepare key of EventSource subscribe -> subscribe enqueueAction
-        Ref.write (Just runCanceler) canceler
+      key <- Resource.register $ liftEffect (Ref.read canceler) >>= sequence_
+      runCanceler <- case prepare key of EventSource subscribe -> lift $ subscribe (liftEffect <<< enqueueAction)
+      liftEffect $ Ref.write (Just runCanceler) canceler
       pure (next key)
     Release key next -> do
       Resource.release key
       pure next
     Lift aff -> do
-      lift aff
+      liftAff aff
     Par (ComponentAp p) -> do
       sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent stateRef enqueueAction) p
     Fork runFork next -> do
