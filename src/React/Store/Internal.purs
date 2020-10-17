@@ -8,7 +8,7 @@ import Control.Monad.Resource as Resource
 import Control.Monad.State (class MonadState)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Bifunctor (lmap)
-import Data.Foldable (sequence_)
+import Data.Foldable (sequence_, traverse_)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -76,18 +76,18 @@ derive newtype instance applicativeComponentAp :: Applicative (ComponentAp state
 
 data Lifecycle props action
   = Initialize props
-  | Update props
+  | Props props
   | Action action
   | Finalize
 
-type EvalSpec state action
+type ComponentInterface state action
   = { stateRef :: Ref state
     , render :: state -> Effect Unit
     , enqueueAction :: action -> Effect Unit
     }
 
-evalComponent :: forall state action. EvalSpec state action -> ComponentM state action Aff ~> Resource
-evalComponent spec@{ stateRef, render, enqueueAction } (ComponentM component) = runFreeM interpret component
+evalComponent :: forall state action. ComponentInterface state action -> ComponentM state action Aff ~> Resource
+evalComponent interface@{ stateRef, render, enqueueAction } (ComponentM component) = runFreeM interpret component
   where
   interpret :: forall a. ComponentF state action Aff (Free (ComponentF state action Aff) a) -> Resource (Free (ComponentF state action Aff) a)
   interpret = case _ of
@@ -113,8 +113,30 @@ evalComponent spec@{ stateRef, render, enqueueAction } (ComponentM component) = 
     Lift aff -> do
       liftAff aff
     Par (ComponentAp p) -> do
-      sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent spec) p
+      sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent interface) p
     Fork runFork next -> do
-      fiber <- Resource.fork $ evalComponent spec runFork
+      fiber <- Resource.fork $ evalComponent interface runFork
       key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
       pure (next key)
+
+type EvalSpec props action state m
+  = { initialize :: props -> Maybe action
+    , props :: props -> Maybe action
+    , action :: action -> ComponentM state action m Unit
+    , finalize :: Maybe action
+    }
+
+defaultEval :: forall props action state m. EvalSpec props action state m
+defaultEval =
+  { initialize: const Nothing
+  , props: const Nothing
+  , action: const (pure unit)
+  , finalize: Nothing
+  }
+
+mkEval :: forall props action state m. EvalSpec props action state m -> Lifecycle props action -> ComponentM state action m Unit
+mkEval eval = case _ of
+  Initialize props -> traverse_ eval.action $ eval.initialize props
+  Props props -> traverse_ eval.action $ eval.props props
+  Action action -> eval.action action
+  Finalize -> traverse_ eval.action eval.finalize
