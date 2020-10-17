@@ -13,7 +13,6 @@ import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Effect.Aff.AVar as AffAVar
 import Effect.Aff.AVar as AffVar
-import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import React.Basic.Hooks (JSX)
@@ -72,11 +71,12 @@ component name { init, eval, render } =
     React.useEffectOnce do
       let
         runStore event = do
-          state <- liftEffect $ Ref.read stateRef
-          evalComponent stateRef store.dispatch (eval event)
-          state' <- liftEffect $ Ref.read stateRef
-          unless (unsafeRefEq state state') do
-            liftEffect $ modifyStore _ { state = state' }
+          evalComponent
+            { stateRef
+            , render: \state -> modifyStore _ { state = state }
+            , enqueueAction: store.dispatch
+            }
+            (eval event)
       blockUntilUnmount <- AVar.empty
       (Aff.launchAff_ <<< Resource.runResource) do
         runStore (Initialize props)

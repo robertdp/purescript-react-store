@@ -18,6 +18,7 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
+import Unsafe.Reference (unsafeRefEq)
 
 newtype EventSource a m
   = EventSource ((a -> m Unit) -> m (m Unit))
@@ -79,18 +80,27 @@ data Lifecycle props action
   | Action action
   | Finalize
 
-evalComponent :: forall state action a. Ref state -> (action -> Effect Unit) -> ComponentM state action Aff a -> Resource a
-evalComponent stateRef enqueueAction (ComponentM component) = runFreeM interpret component
+type EvalSpec state action
+  = { stateRef :: Ref state
+    , render :: state -> Effect Unit
+    , enqueueAction :: action -> Effect Unit
+    }
+
+evalComponent :: forall state action. EvalSpec state action -> ComponentM state action Aff ~> Resource
+evalComponent spec@{ stateRef, render, enqueueAction } (ComponentM component) = runFreeM interpret component
   where
-  interpret :: ComponentF state action Aff (Free (ComponentF state action Aff) a) -> Resource (Free (ComponentF state action Aff) a)
+  interpret :: forall a. ComponentF state action Aff (Free (ComponentF state action Aff) a) -> Resource (Free (ComponentF state action Aff) a)
   interpret = case _ of
     State f -> do
       liftEffect do
         state <- Ref.read stateRef
         case f state of
-          Tuple next state' -> do
-            Ref.write state' stateRef
-            pure next
+          Tuple next state'
+            | unsafeRefEq state state' -> do
+              Ref.write state' stateRef
+              render state'
+              pure next
+          Tuple next _ -> pure next
     Subscribe prepare next -> do
       canceler <- liftEffect $ Ref.new Nothing
       key <- Resource.register $ liftEffect (Ref.read canceler) >>= sequence_
@@ -103,8 +113,8 @@ evalComponent stateRef enqueueAction (ComponentM component) = runFreeM interpret
     Lift aff -> do
       liftAff aff
     Par (ComponentAp p) -> do
-      sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent stateRef enqueueAction) p
+      sequential $ retractFreeAp $ hoistFreeAp (parallel <<< evalComponent spec) p
     Fork runFork next -> do
-      fiber <- Resource.fork $ evalComponent stateRef enqueueAction runFork
+      fiber <- Resource.fork $ evalComponent spec runFork
       key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
       pure (next key)
