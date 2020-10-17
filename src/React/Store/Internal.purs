@@ -25,21 +25,19 @@ newtype EventSource a
 data StoreF state action m a
   = State (state -> Tuple a state)
   | Subscribe (ReleaseKey -> EventSource action) (ReleaseKey -> a)
-  | Unsubscribe ReleaseKey a
+  | Release ReleaseKey a
   | Lift (m a)
   | Par (ComponentAp state action m a)
   | Fork (ComponentM state action m Unit) (ReleaseKey -> a)
-  | Kill ReleaseKey a
 
 instance functorStoreF :: Functor m => Functor (StoreF state action m) where
   map f = case _ of
     State k -> State (lmap f <<< k)
     Subscribe fes k -> Subscribe fes (map f k)
-    Unsubscribe sid a -> Unsubscribe sid (f a)
+    Release sid a -> Release sid (f a)
     Lift m -> Lift (map f m)
     Par m -> Par (map f m)
     Fork m k -> Fork m (map f k)
-    Kill fid a -> Kill fid (f a)
 
 newtype ComponentM state action m a
   = ComponentM (Free (StoreF state action m) a)
@@ -99,7 +97,7 @@ evalComponent stateRef enqueueAction (ComponentM store) = runFreeM interpret sto
         runCanceler <- case prepare key of EventSource subscribe -> subscribe enqueueAction
         Ref.write (Just runCanceler) canceler
       pure (next key)
-    Unsubscribe key next -> do
+    Release key next -> do
       Resource.release key
       pure next
     Lift aff -> do
@@ -110,6 +108,3 @@ evalComponent stateRef enqueueAction (ComponentM store) = runFreeM interpret sto
       fiber <- Resource.fork $ evalComponent stateRef enqueueAction runFork
       key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
       pure (next key)
-    Kill key next -> do
-      Resource.release key
-      pure next
