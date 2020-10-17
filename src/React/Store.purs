@@ -46,14 +46,14 @@ component name { init, eval, render } =
           in { eventQueue, propsRef, stateRef }
     store /\ modifyStore <-
       React.useState
-        { dispatch: \action -> Aff.launchAff_ do Aff.attempt do AffVar.put (Action action) eventQueue
+        { dispatch: \action -> Aff.launchAff_ do AffVar.put (Action action) eventQueue
         , state: init
         }
     React.useEffectAlways do
       props' <- Ref.read propsRef
       unless (unsafeRefEq props props') do
         Ref.write props propsRef
-        Aff.launchAff_ $ Aff.attempt $ AffVar.put (Update props') eventQueue
+        Aff.launchAff_ $ AffVar.put (Update props') eventQueue
       mempty
     React.useEffectOnce do
       let
@@ -63,16 +63,17 @@ component name { init, eval, render } =
           state' <- liftEffect $ Ref.read stateRef
           unless (unsafeRefEq state state') do
             liftEffect $ modifyStore _ { state = state' }
-      triggerCleanup <- AVar.empty
+      blockUntilUnmount <- AVar.empty
       (Aff.launchAff_ <<< Resource.runResource) do
         runStore (Initialize props)
         fiber <- Resource.fork $ forever $ runStore =<< lift (AffVar.take eventQueue)
         lift do
-          AffAVar.take triggerCleanup
+          AffAVar.take blockUntilUnmount
           Aff.killFiber (Aff.error "Finalizing") fiber
-          AffAVar.kill (Aff.error "Finalizing") eventQueue
-          AffAVar.kill (Aff.error "Finalizing") triggerCleanup
+          AffAVar.kill (Aff.error "Finalizing") blockUntilUnmount
         runStore Finalize
       pure do
-        Aff.launchAff_ do Aff.attempt do AffVar.put unit triggerCleanup
+        Aff.launchAff_ do
+          AffAVar.kill (Aff.error "Finalizing") eventQueue
+          AffVar.put unit blockUntilUnmount
     pure (render { props, state: store.state, dispatch: store.dispatch })
