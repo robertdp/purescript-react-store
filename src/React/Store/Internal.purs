@@ -99,24 +99,24 @@ type ComponentInterface state action
     }
 
 evalComponent :: forall state action. ComponentInterface state action -> ComponentM state action Aff ~> Resource
-evalComponent interface@{ stateRef, render, enqueueAction } (ComponentM component) = runFreeM interpret component
+evalComponent interface (ComponentM component) = runFreeM interpret component
   where
-  interpret :: forall a. ComponentF state action Aff (Free (ComponentF state action Aff) a) -> Resource (Free (ComponentF state action Aff) a)
+  interpret :: ComponentF state action Aff ~> Resource
   interpret = case _ of
     State f -> do
       liftEffect do
-        state <- Ref.read stateRef
+        state <- Ref.read interface.stateRef
         case f state of
           Tuple next state'
             | unsafeRefEq state state' -> do
-              Ref.write state' stateRef
-              render state'
+              Ref.write state' interface.stateRef
+              interface.render state'
               pure next
           Tuple next _ -> pure next
     Subscribe prepare next -> do
       canceler <- liftEffect $ Ref.new Nothing
       key <- Resource.register $ liftEffect (Ref.read canceler) >>= sequence_
-      runCanceler <- case prepare key of EventSource subscribe -> lift $ subscribe enqueueAction
+      runCanceler <- case prepare key of EventSource subscribe -> lift $ subscribe interface.enqueueAction
       liftEffect $ Ref.write (Just runCanceler) canceler
       pure (next key)
     Release key next -> do
