@@ -134,9 +134,13 @@ defaultEval =
   , finalize: Nothing
   }
 
-mkEval :: forall props action state m. EvalSpec props action state m -> Lifecycle props action -> ComponentM state action m Unit
-mkEval eval = case _ of
-  Initialize props -> traverse_ eval.action $ eval.initialize props
-  Props props -> traverse_ eval.action $ eval.props props
-  Action action -> eval.action action
-  Finalize -> traverse_ eval.action eval.finalize
+buildEval :: forall props action state m. (EvalSpec props action state m -> EvalSpec props action state m) -> Lifecycle props action -> ComponentM state action m Unit
+buildEval f =
+  let
+    eval = f defaultEval
+  in
+    case _ of
+      Initialize props -> traverse_ eval.action $ eval.initialize props
+      Props props -> traverse_ eval.action $ eval.props props
+      Action action -> eval.action action
+      Finalize -> traverse_ eval.action eval.finalize
