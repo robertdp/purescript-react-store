@@ -3,16 +3,15 @@ module React.Store.Internal where
 import Prelude
 import Control.Applicative.Free (FreeAp, hoistFreeAp, retractFreeAp)
 import Control.Monad.Free (Free, liftF, runFreeM)
-import Control.Monad.Reader (ReaderT(..))
-import Control.Monad.Resource (ReleaseKey, Resource, ResourceT(..))
+import Control.Monad.Resource (ReleaseKey, Resource)
 import Control.Monad.Resource as Resource
-import Control.Monad.Resource.Registry (Registry)
 import Control.Monad.State (class MonadState)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Bifunctor (lmap)
 import Data.Foldable (sequence_)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Effect (Effect)
 import Effect.Aff (Aff, parallel, sequential)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -20,23 +19,17 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 
-newtype ForkId
-  = ForkId ReleaseKey
-
-newtype SubscriptionId
-  = SubscriptionId ReleaseKey
-
 newtype EventSource a
-  = EventSource ((a -> Aff Unit) -> Aff (Aff Unit))
+  = EventSource ((a -> Effect Unit) -> Effect (Effect Unit))
 
 data StoreF state action m a
   = State (state -> Tuple a state)
-  | Subscribe (SubscriptionId -> EventSource action) (SubscriptionId -> a)
-  | Unsubscribe SubscriptionId a
+  | Subscribe (ReleaseKey -> EventSource action) (ReleaseKey -> a)
+  | Unsubscribe ReleaseKey a
   | Lift (m a)
   | Par (ComponentAp state action m a)
-  | Fork (ComponentM state action m Unit) (ForkId -> a)
-  | Kill ForkId a
+  | Fork (ComponentM state action m Unit) (ReleaseKey -> a)
+  | Kill ReleaseKey a
 
 instance functorStoreF :: Functor m => Functor (StoreF state action m) where
   map f = case _ of
@@ -88,7 +81,7 @@ data Lifecycle props action
   | Action action
   | Finalize
 
-interpret :: forall state action a. Ref state -> (action -> Aff Unit) -> ComponentM state action Aff a -> Resource a
+interpret :: forall state action a. Ref state -> (action -> Effect Unit) -> ComponentM state action Aff a -> Resource a
 interpret stateRef enqueueAction (ComponentM store) =
   runFreeM
     ( case _ of
@@ -101,15 +94,12 @@ interpret stateRef enqueueAction (ComponentM store) =
                 pure next
         Subscribe prepare next -> do
           canceler <- liftEffect $ Ref.new Nothing
-          key <- Resource.register $ liftEffect (Ref.read canceler) >>= sequence_
-          let
-            subscriptionId = SubscriptionId key
-
-            EventSource subscriber = prepare subscriptionId
-          runCanceler <- lift $ subscriber enqueueAction
-          liftEffect $ Ref.write (Just runCanceler) canceler
-          pure (next subscriptionId)
-        Unsubscribe (SubscriptionId key) next -> do
+          key <- Resource.register $ liftEffect $ Ref.read canceler >>= sequence_
+          liftEffect do
+            runCanceler <- case prepare key of EventSource subscribe -> subscribe enqueueAction
+            Ref.write (Just runCanceler) canceler
+          pure (next key)
+        Unsubscribe key next -> do
           Resource.release key
           pure next
         Lift aff -> do
@@ -119,8 +109,8 @@ interpret stateRef enqueueAction (ComponentM store) =
         Fork run next -> do
           fiber <- Resource.fork $ interpret stateRef enqueueAction run
           key <- Resource.register $ Aff.killFiber (Aff.error "Fiber killed") fiber
-          pure $ next (ForkId key)
-        Kill (ForkId key) next -> do
+          pure (next key)
+        Kill key next -> do
           Resource.release key
           pure next
     )

@@ -16,12 +16,12 @@ import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import React.Basic.Hooks (JSX)
 import React.Basic.Hooks as React
-import React.Store.Internal (Lifecycle(..), StoreM, interpret)
+import React.Store.Internal (ComponentM, Lifecycle(..), interpret)
 import Unsafe.Reference (unsafeRefEq)
 
 type Component props state action
   = { init :: state
-    , eval :: Lifecycle props action -> StoreM state action Aff Unit
+    , eval :: Lifecycle props action -> ComponentM state action Aff Unit
     , render ::
         { props :: props
         , state :: state
@@ -58,7 +58,7 @@ component name { init, eval, render } =
       let
         runStore event = do
           state <- liftEffect $ Ref.read stateRef
-          interpret stateRef (liftEffect <<< store.dispatch) (eval event)
+          interpret stateRef store.dispatch (eval event)
           state' <- liftEffect $ Ref.read stateRef
           unless (unsafeRefEq state state') do
             liftEffect $ modifyStore _ { state = state' }
